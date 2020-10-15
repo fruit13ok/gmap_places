@@ -47,6 +47,7 @@ touch .gitignore
 git init
 git add .
 git commit -m "first commit, basic server with form POST"
+git branch -M main
 git remote add origin https://github.com/fruit13ok/gmap_places.git
 git push -u origin main
     // GitHub is working on replacing the term "master" on its service with a neutral term like "main" to avoid any unnecessary references to slavery
