@@ -1,3 +1,7 @@
+// for educational
+// Google Maps Platform Terms of Service 3.2.3a no scraping
+
+
 // to begin this project
 mkdir gmap_places
 cd gmap_places
@@ -56,3 +60,34 @@ git push -u origin main
 // delete node_modules folder, push again,
 // if still not work, delete .git folder too, try again.
 // Remember to npm i before next run, might need to click refresh in folder explorer.
+
+
+//////////////////////////////////// trying selecting from DOM ////////////////////////////////
+// this can select current page result (20, may include extra ad results)
+document.querySelectorAll('div.section-result-content')
+// or
+document.querySelectorAll('a[jstcache="856"]:not([class]');
+// click on the second result, go to detail page
+document.querySelectorAll('a[jstcache="856"]:not([class]')[1].click();
+
+// code that can automate click the first result
+const forLoop = async (resultElements) => {
+    return resultElements[0];
+}
+async function scrape (searchKey) {
+    const browser = await puppeteer.launch({headless: false, slowMo: 100});
+    const page = await browser.newPage();
+    const navigationPromise =  page.waitForNavigation();
+    await page.goto('https://www.google.com/maps/');
+    await navigationPromise;
+    await page.type('input#searchboxinput', searchKey, { delay: 50 });
+    await page.keyboard.press('Enter');
+    let urls = [];
+    await page.waitForSelector('div.section-result-content');
+    const arrOfElements = await page.$$('div.section-result-content');
+    const arrObj = await forLoop(arrOfElements);
+    await arrObj.click();
+    await navigationPromise;
+    // await browser.close();   // comment out let browser stay open after done the task
+    return urls;
+}
