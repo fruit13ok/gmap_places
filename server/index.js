@@ -32,42 +32,116 @@ app.listen(port, () => {
 });
 
 // helper functions
-const forLoop = async (resultElements, myPage) => {
-    // var tempArr=[];
-    // for (let resultElement of resultElements) {
-    //     let url = await (await resultElement.getProperty('href')).jsonValue();
-    //     let aText = await resultElement.$eval('h3', i => i.innerText);
-    //     console.log(url);
-    //     console.log(aText);
-    //     // urls.push(url);
-    //     tempArr.push({url: url, aText: aText});
-    // }
-    // return tempArr;
-    // for (let resultElement of resultElements){
+// after search, on current page, click to each result, scrape that result page, go back to previous page, return results
+const loopClickCompResult = async (page, navigationPromise) => {
+    // companies on current page
+    var curPageCompanies = [];
+    // company data keys
+    var matchAddress = '';
+    var matchPhoneNumber = '';
+    var matchWebsite = '';
+    var address = '';
+    var city = '';
+    var stateZip = '';
+    var state = '';
+    var zip = '';
+    var phoneNumber = '';
+    var website = '';
+    // regular expression for full address
+    const regexMatchAddress = /\d+ \d*\w+ \w+.*, \w+, \w+ \d+/g;
+    // regular expression for domain name
+    const regexDomainName = /(https?:\/\/)?(www\.)?([\w\d]+)\.([\w]+)(\.[\w]+)?(\/[^ ]*)?/g;
+    // regular expression for phone number
+    const regexPhoneNum = /((\d)\D)?(\(?(\d\d\d)\)?)?\D(\d\d\d)\D(\d\d\d\d)/g;
+    
+    // I plan to identify Ads in the later version
+    // await page.waitForSelector('div.section-result-content');
+    // var numOfCurResult = await page.evaluate(() => {
+    //     var arr = [];
+    //     var elements = document.querySelectorAll('div.section-result-content');
+    //     for(var i=0; i<elements.length; i++){
+    //         if(elements[i].querySelector('.section-result-title-wta-icon')){
+    //             arr.push(true);
+    //         }else{
+    //             arr.push(false);
+    //         }
+    //     }
+    //     return arr;
+    // });
+    // console.log('numOfCurResult: ', numOfCurResult);
 
-    // }
-    // const navigationPromise =  myPage.waitForNavigation();
-    // await resultElements[0].click();
-    // await navigationPromise;
-    return resultElements[0];
-}
+    // need to reevaluate number of results, sometime will keep using firsttime result, I applied backup plan
+    await page.waitForSelector('div.section-result-content');
+    var numOfCurResult = Array.from(await page.$$('div.section-result-content')).length;
+    console.log("# of results this page: ", numOfCurResult);
 
-const consoleLog = async (obj) => {
-    console.log("testing");
-    console.log(obj);
-    return obj;
+    // click to each result, scrape that result page, go back to previous page
+    for(var i=0; i<numOfCurResult; i++){
+        await page.waitForSelector('div.section-result-content'); 
+        var arrOfElements = await page.$$('div.section-result-content');
+        console.log(i);
+        // my backup plan, check for undefined / null index
+        if(Array.from(arrOfElements)[i]){
+            await Array.from(arrOfElements)[i].click(); 
+            await navigationPromise;
+            await page.waitForSelector('.section-hero-header-image-hero-container.collapsible-hero-image img');
+            // var imageUrl = await page.$eval('.section-hero-header-image-hero-container.collapsible-hero-image img', img => img.src);
+            var imageUrl = await page.evaluate((selector) => {
+                return document.querySelector(selector).getAttribute('src').replace('/', '')
+            }, '.section-hero-header-image-hero-container.collapsible-hero-image img');
+            await page.waitForSelector('.ugiz4pqJLAG__primary-text.gm2-body-2');
+            // array of string company data, array size will differ by differ company
+            // I use regex to parse data, don't know why some url not like my regex
+            var divTexts = await page.$$eval('.ugiz4pqJLAG__primary-text.gm2-body-2', divs => divs.map(div => div.innerText));
+            console.log(divTexts);
+            matchAddress = divTexts.filter(word => word.match(regexMatchAddress))[0];
+            if(matchAddress){
+                [address, city, stateZip] = matchAddress.split(', ');
+                [state, zip] = stateZip.split(' ');
+            }
+            matchWebsite = divTexts.filter(word => word.match(regexDomainName))[0];
+            if(matchWebsite){
+                website = matchWebsite;
+            }
+            matchPhoneNumber = divTexts.filter(word => word.match(regexPhoneNum))[0];
+            if(matchPhoneNumber){
+                phoneNumber = matchPhoneNumber;
+            }
+            // console.log(imageUrl+'\n'+address+'\n'+city+'\n'+state+'\n'+zip+'\n'+phoneNumber+'\n'+website);
+            // company data formet
+            curPageCompanies.push({imageUrl: imageUrl, address: address, city: city, state: state, zip: zip, phoneNumber: phoneNumber, website: website});
+            // go back a page
+            await page.waitForSelector('button.section-back-to-list-button'); 
+            var backToResults = await page.$('button.section-back-to-list-button');
+            await backToResults.click(); 
+            // await page.goBack();     // don't use page.goBack(), instead select the back button and click it
+            await navigationPromise;
+        }
+    }
+    return curPageCompanies;
+};
+
+// remove duuplicate at the end
+let removeDuplicateResult = (allResult) => {
+    const seen = new Set();
+    const filteredArr = allResult.filter(el => {
+        const duplicate = seen.has(el.website);
+        seen.add(el.website);
+        return !duplicate;
+    });
+    return filteredArr;
 }
 
 // scrape
 async function scrape (searchKey) {
-    // const browser = await puppeteer.launch({args: ['--no-sandbox', '--disable-setuid-sandbox']});   // need for real server
-    const browser = await puppeteer.launch({headless: false, slowMo: 100});
+    const browser = await puppeteer.launch({args: ['--no-sandbox', '--disable-setuid-sandbox'], slowMo: 100});   // need for real server
+    // var browser = await puppeteer.launch({headless: false, slowMo: 100});
     // const browser = await puppeteer.launch({slowMo: 100}); // need to slow down to content load
 
-    const page = await browser.newPage();
+    var page = await browser.newPage();
     // deal with navigation and page timeout, see the link
     // https://www.checklyhq.com/docs/browser-checks/timeouts/
-    const navigationPromise =  page.waitForNavigation();
+    var navigationPromise =  page.waitForNavigation();
     
     await page.goto('https://www.google.com/maps/');
     await navigationPromise;
@@ -76,7 +150,8 @@ async function scrape (searchKey) {
     await page.keyboard.press('Enter');
     await navigationPromise;
 
-    let urls = [];
+    
+    // var address, city, stateZip, state, zip, phoneNumber, website;
 
     // *** NOTE *** sometime the class name won't be 'div.section-result-content'
     // it can be '.section-place-result-container-summary button'
@@ -92,147 +167,32 @@ async function scrape (searchKey) {
     // *** NOTE *** Error: Node is detached from document
     // one solution is to evaluate the same selector every time the page navigate.
 
-    await page.waitForSelector('div.section-result-content'); 
-    var arrOfElements = await page.$$('div.section-result-content');
-
-    // #pane > div > div.widget-pane-content.scrollable-y > div > div > div.section-layout.section-scrollbox.scrollable-y.scrollable-show.section-layout-flex-vertical > div.section-layout.section-scrollbox.scrollable-y.scrollable-show.section-layout-flex-vertical > div:nth-child(1) > div:nth-child(5)
-    // document.querySelectorAll('#pane > div > div.widget-pane-content.scrollable-y > div > div > div:nth-child(4) > div > div > div:nth-child(2)')
-    // <button jstcache="871" style="display:none"></button>
-    
-
-    // for(let i=0; i<arrOfElements.length; i++){
-    //     var tempArr = await page.$$('div.section-result-content');
-    //     if(tempArr[i]){
-    //         await tempArr[i].click();
-    //         await page.waitForNavigation();;
-    //         // await page.goBack();
-    //         await history.go(-1);
-    //         await page.waitForNavigation();;
-    //     }else{
-    //         break;
-    //     }
-    // }
-
-    // const arrObj = await forLoop(arrOfElements, page, urls);
-    // await arrObj.click();
-    // console.log(arrOfElements[0]);
-    await Array.from(arrOfElements)[0].click(); 
-    await navigationPromise;
-    await page.waitForSelector('.section-hero-header-image-hero-container.collapsible-hero-image img');
-    var imageUrl = await page.$eval('.section-hero-header-image-hero-container.collapsible-hero-image img', img => img.src);
-    await page.waitForSelector('.ugiz4pqJLAG__primary-text.gm2-body-2');
-    var divTexts = await page.$$eval('.ugiz4pqJLAG__primary-text.gm2-body-2', divs => divs.map(div => div.innerText));
-    var [address, city, stateZip] = divTexts[0].split(', ');
-    var [state, zip] = stateZip.split(' ');
-    var phoneNumber = divTexts[2];
-    var website = divTexts[1];
-    // console.log(imageUrl+'\n'+address+'\n'+city+'\n'+state+'\n'+zip+'\n'+phoneNumber+'\n'+website);
-    urls.push({imageUrl: imageUrl, address: address, city: city, state: state, zip: zip, phoneNumber: phoneNumber, website: website});
-
-    await page.waitForSelector('button.section-back-to-list-button'); 
-    var backToResults = await page.$('button.section-back-to-list-button');
-    await backToResults.click(); 
-    // await page.goBack();     // don't use page.goBack(), instead select the back button and click it
-    await navigationPromise;
 
 
-    await page.waitForSelector('div.section-result-content'); 
-    var arrOfElements = await page.$$('div.section-result-content');
-    await Array.from(arrOfElements)[1].click(); 
-    await navigationPromise;
-    await page.waitForSelector('button.section-back-to-list-button'); 
-    var backToResults = await page.$('button.section-back-to-list-button');
-    await backToResults.click(); 
-    await navigationPromise;
+    // after search, scraped current page results, go to next page of results
+    var temp = [];
+    let urls = [];
+    let hasNext = true
+    while(hasNext) {
+        await page.waitForSelector('div.section-result-content');
+        temp = await loopClickCompResult(page,navigationPromise);
+        urls = [...urls, ...temp];
+        // need to check for disabled, because disabled element can still be click, can cause invite loop
+        var nextBtnDisabled = await page.$('button#n7lv7yjyC35__section-pagination-button-next:disabled');
+        var nextPageResults = await page.$('button#n7lv7yjyC35__section-pagination-button-next');
+        if(nextBtnDisabled !== null){
+            hasNext = false;
+            console.log(hasNext);
+        }else if(nextPageResults !== null){
+            console.log(hasNext);
+            await nextPageResults.click(); 
+            await navigationPromise;
+        }
+    }
 
 
-    await page.waitForSelector('div.section-result-content'); 
-    var arrOfElements = await page.$$('div.section-result-content');
-    await Array.from(arrOfElements)[2].click(); 
-    await navigationPromise;
-    await page.waitForSelector('button.section-back-to-list-button'); 
-    var backToResults = await page.$('button.section-back-to-list-button');
-    await backToResults.click(); 
-    await navigationPromise;
 
-
-    await page.waitForSelector('div.section-result-content'); 
-    var arrOfElements = await page.$$('div.section-result-content');
-    await Array.from(arrOfElements)[3].click(); 
-    await navigationPromise;
-    await page.waitForSelector('button.section-back-to-list-button'); 
-    var backToResults = await page.$('button.section-back-to-list-button');
-    await backToResults.click(); 
-    await navigationPromise;
-
-
-    await page.waitForSelector('div.section-result-content'); 
-    var arrOfElements = await page.$$('div.section-result-content');
-    await Array.from(arrOfElements)[4].click(); 
-    await navigationPromise;
-    await page.waitForSelector('button.section-back-to-list-button'); 
-    var backToResults = await page.$('button.section-back-to-list-button');
-    await backToResults.click(); 
-    await navigationPromise;
-
-
-    await page.waitForSelector('div.section-result-content'); 
-    var arrOfElements = await page.$$('div.section-result-content');
-    await Array.from(arrOfElements)[5].click(); 
-    await navigationPromise;
-    await page.waitForSelector('button.section-back-to-list-button'); 
-    var backToResults = await page.$('button.section-back-to-list-button');
-    await backToResults.click(); 
-    await navigationPromise;
-
-
-    await page.waitForSelector('div.section-result-content'); 
-    var arrOfElements = await page.$$('div.section-result-content');
-    await Array.from(arrOfElements)[6].click(); 
-    await navigationPromise;
-    await page.waitForSelector('button.section-back-to-list-button'); 
-    var backToResults = await page.$('button.section-back-to-list-button');
-    await backToResults.click(); 
-    await navigationPromise;
-
-
-    await page.waitForSelector('div.section-result-content'); 
-    var arrOfElements = await page.$$('div.section-result-content');
-    await Array.from(arrOfElements)[7].click(); 
-    await navigationPromise;
-    await page.waitForSelector('button.section-back-to-list-button'); 
-    var backToResults = await page.$('button.section-back-to-list-button');
-    await backToResults.click(); 
-    await navigationPromise;
-
-
-    await page.waitForSelector('div.section-result-content'); 
-    var arrOfElements = await page.$$('div.section-result-content');
-    await Array.from(arrOfElements)[8].click(); 
-    await navigationPromise;
-    await page.waitForSelector('button.section-back-to-list-button'); 
-    var backToResults = await page.$('button.section-back-to-list-button');
-    await backToResults.click(); 
-    await navigationPromise;
-
-
-    await page.waitForSelector('div.section-result-content'); 
-    var arrOfElements = await page.$$('div.section-result-content');
-    await Array.from(arrOfElements)[9].click(); 
-    await navigationPromise;
-    await page.waitForSelector('button.section-back-to-list-button'); 
-    var backToResults = await page.$('button.section-back-to-list-button');
-    await backToResults.click(); 
-    await navigationPromise;
-
-    //button#n7lv7yjyC35__section-pagination-button-next
-    await page.waitForSelector('button#n7lv7yjyC35__section-pagination-button-next'); 
-    var nextPageResults = await page.$('button#n7lv7yjyC35__section-pagination-button-next');
-    await nextPageResults.click(); 
-    await navigationPromise;
-
-
-    ////////////////////////// list of results on current page ////////////////////////////
+    ////////////////////////// another list of results on current page ////////////////////////////
 
     // var searchKey = "san francisco japanese market";
     // var searchKey = "seattle marketing firm";
@@ -259,8 +219,9 @@ app.post('/api', async function (req, res) {
     let searchKey = req.body.searchKey || "";
 
     const companies = await scrape(searchKey);
+    let uniqueCompanies = removeDuplicateResult(companies);
 
     // console.log("result", companies);
-    let rlist = [{key: searchKey, value: companies}];
+    let rlist = [{searchKey: searchKey, companiesData: uniqueCompanies}];
     res.status(200).send(rlist);
 });
