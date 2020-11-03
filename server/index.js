@@ -39,7 +39,11 @@ const loopClickCompResult = async (page, navigationPromise) => {
     // company data keys
     var matchAddress = '';
     var matchPhoneNumber = '';
+    var matchWebsites = [];
     var matchWebsite = '';
+    var imageUrl = '';
+    var company = '';
+    var divTexts = '';
     var address = '';
     var city = '';
     var stateZip = '';
@@ -79,6 +83,8 @@ const loopClickCompResult = async (page, navigationPromise) => {
     for(var i=0; i<numOfCurResult; i++){
         await page.waitForSelector('div.section-result-content'); 
         var arrOfElements = await page.$$('div.section-result-content');
+        // when console log show i but not each content, it is ok,
+        // that mean it didn't count the current page result size
         console.log(i);
         // my backup plan, check for undefined / null index
         if(Array.from(arrOfElements)[i]){
@@ -86,20 +92,23 @@ const loopClickCompResult = async (page, navigationPromise) => {
             await navigationPromise;
             await page.waitForSelector('.section-hero-header-image-hero-container.collapsible-hero-image img');
             // var imageUrl = await page.$eval('.section-hero-header-image-hero-container.collapsible-hero-image img', img => img.src);
-            var imageUrl = await page.evaluate((selector) => {
+            imageUrl = await page.evaluate((selector) => {
                 return document.querySelector(selector).getAttribute('src').replace('/', '')
             }, '.section-hero-header-image-hero-container.collapsible-hero-image img');
             await page.waitForSelector('.ugiz4pqJLAG__primary-text.gm2-body-2');
+            company = await page.$eval('.section-hero-header-title-title', el => el.innerText);
             // array of string company data, array size will differ by differ company
-            // I use regex to parse data, don't know why some url not like my regex
-            var divTexts = await page.$$eval('.ugiz4pqJLAG__primary-text.gm2-body-2', divs => divs.map(div => div.innerText));
+            // I use regex to parse data
+            divTexts = await page.$$eval('.ugiz4pqJLAG__primary-text.gm2-body-2', divs => divs.map(div => div.innerText));
             console.log(divTexts);
             matchAddress = divTexts.filter(word => word.match(regexMatchAddress))[0];
             if(matchAddress){
                 [address, city, stateZip] = matchAddress.split(', ');
                 [state, zip] = stateZip.split(' ');
             }
-            matchWebsite = divTexts.filter(word => word.match(regexDomainName))[0];
+            matchWebsites = divTexts.filter(word => word.match(regexDomainName));
+            // some content had multiple urls, last one looks better
+            matchWebsite = matchWebsites[matchWebsites.length - 1];
             if(matchWebsite){
                 website = matchWebsite;
             }
@@ -109,7 +118,7 @@ const loopClickCompResult = async (page, navigationPromise) => {
             }
             // console.log(imageUrl+'\n'+address+'\n'+city+'\n'+state+'\n'+zip+'\n'+phoneNumber+'\n'+website);
             // company data formet
-            curPageCompanies.push({imageUrl: imageUrl, address: address, city: city, state: state, zip: zip, phoneNumber: phoneNumber, website: website});
+            curPageCompanies.push({company: company, imageUrl: imageUrl, address: address, city: city, state: state, zip: zip, phoneNumber: phoneNumber, website: website});
             // go back a page
             await page.waitForSelector('button.section-back-to-list-button'); 
             var backToResults = await page.$('button.section-back-to-list-button');
@@ -134,7 +143,7 @@ let removeDuplicateResult = (allResult) => {
 
 // scrape
 async function scrape (searchKey) {
-    const browser = await puppeteer.launch({args: ['--no-sandbox', '--disable-setuid-sandbox'], slowMo: 100});   // need for real server
+    const browser = await puppeteer.launch({args: ['--no-sandbox', '--disable-setuid-sandbox'], slowMo: 100}); // need for real server
     // var browser = await puppeteer.launch({headless: false, slowMo: 100});
     // const browser = await puppeteer.launch({slowMo: 100}); // need to slow down to content load
 
@@ -174,7 +183,8 @@ async function scrape (searchKey) {
     let urls = [];
     let hasNext = true
     while(hasNext) {
-        await page.waitForSelector('div.section-result-content');
+        // some how wait for div.section-result-content before and inside the loop makes less problem
+        // await page.waitForSelector('div.section-result-content');
         temp = await loopClickCompResult(page,navigationPromise);
         urls = [...urls, ...temp];
         // need to check for disabled, because disabled element can still be click, can cause invite loop
@@ -202,7 +212,7 @@ async function scrape (searchKey) {
     // // array of current page results
     // elements[0].querySelectorAll('.sJKr7qpXOXd__result-container.sJKr7qpXOXd__two-actions.sJKr7qpXOXd__wide-margin');
 
-    // await browser.close();
+    await browser.close();
     return urls;
 };
 
@@ -218,10 +228,16 @@ app.post('/api', async function (req, res) {
     req.setTimeout(0);
     let searchKey = req.body.searchKey || "";
 
-    const companies = await scrape(searchKey);
-    let uniqueCompanies = removeDuplicateResult(companies);
+    // const companies = await scrape(searchKey);
+    // let uniqueCompanies = removeDuplicateResult(companies);
 
-    // console.log("result", companies);
-    let rlist = [{searchKey: searchKey, companiesData: uniqueCompanies}];
-    res.status(200).send(rlist);
+    // // console.log("result", companies);
+    // let rlist = [{searchKey: searchKey, companiesData: uniqueCompanies}];
+    // res.status(200).send(rlist);
+    try{
+        const companies = await scrape(searchKey);
+        res.status(200).send(removeDuplicateResult(companies));
+    }catch(err){
+        console.error(err)
+    }
 });
