@@ -93,3 +93,88 @@ async function scrape (searchKey) {
 }
 
 ////////////////////////////// first version done ///////////////////////////
+
+////////////////////////// this article help to use less request /////////////////////////
+https://stackoverflow.com/questions/55664420/page-evaluate-vs-puppeteer-methods/55665084
+
+//////////////////////////////// the thing need to scrape and naming //////////////////////////////////
+name
+    Seattle Ninja
+category
+    Business & Professional Services
+address
+    1631 Belmont Ave, Seattle, WA 98122, USA
+phonenumber
+    2064975700
+website
+    http://www.ninjaseattle.com/
+longdescription
+    <ask about this>
+businesshours
+    [
+        {day: "MONDAY", endTime: "17:00", startTime: "16:00"},
+        {day: "TUESDAY", endTime: "", startTime: ""},
+        {day: "WEDNESDAY", endTime: "", startTime: ""},
+        {day: "THURSDAY", endTime: "", startTime: ""},
+        {day: "FRIDAY", endTime: "", startTime: ""},
+        {day: "SATURDAY", endTime: "", startTime: ""},
+        {day: "SUNDAY", endTime: "", startTime: ""}
+    ]
+logo
+    NULL
+    <or image url>
+latitude
+    47.6161712
+longitude
+    -122.3246548
+bbbAccredited
+    0
+    <ask about this>
+
+
+document.querySelector('button[aria-label="Share"]').click()
+document.querySelector('input.section-copy-link-input').value
+document.querySelector('button[aria-label="Close"]').click()
+
+document.querySelector('.section-open-hours-button').click();
+document.querySelector('.section-open-hours-container').innerText;
+
+
+var hoursStr = document.querySelector('.section-open-hours-container').innerText;
+var hoursArr = hoursStr.replace(/\s/g, ' ').split(' ').filter(e=>e!="");
+
+["Tuesday", "9AM–5:30PM", "Wednesday", "8AM–1PM", "Thursday", "(Thanksgiving)", "Closed", "Holiday", "hours", "Friday", "(Black", "Friday)", "Closed", "Holiday", "hours", "Saturday", "Closed", "Sunday", "Closed", "Monday", "9AM–5:30PM"]
+
+EX:
+[
+    {day: "Monday", hours: "9AM–5:30PM"},
+    {day: "Tuesday", hours: "9AM–5:30PM"},
+    {day: "Wednesday", hours: "8AM–1PM"},
+    {day: "Thursday", hours: "Thanksgiving Closed Holiday hours"},
+    {day: "Friday", hours: "Black Friday Closed Holiday hours"},
+    {day: "Saturday", hours: "Closed"},
+    {day: "Sunday", hours: "Closed"}
+]
+
+var curDay = {};
+var businesshours = [];
+var days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+for (let i=0; i<hoursArr.length; i++){
+    if(days.includes(hoursArr[i])){
+        if(i!=0){
+            businesshours.push(curDay);
+            curDay = {};
+        }
+        curDay.day = hoursArr[i];
+        curDay.hours = "";
+    }else{
+        curDay.hours += hoursArr[i]+" ";
+    }
+    if(i==hoursArr.length-1){
+        businesshours.push(curDay);
+    }
+}
+const sorter = {"Monday": 1,"Tuesday": 2,"Wednesday": 3,"Thursday": 4,"Friday": 5,"Saturday": 6,"Sunday": 0};
+businesshours.sort((a, b)=> sorter[a.day]-sorter[b.day]);
+
+console.log(businesshours);
