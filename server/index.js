@@ -195,7 +195,7 @@ const loopClickCompResult = async (page, navigationPromise) => {
             // document.querySelector('.section-open-hours-button').click();
             // document.querySelector('.section-open-hours-container').innerText;
             try {
-                await page.waitForSelector('.section-open-hours-button', { timeout: 10000 }); // default 30000
+                await page.waitForSelector('.section-open-hours-button', { timeout: 5000 }); // default 30000
                 dropdownListBtn = await page.$('.section-open-hours-button');
                 await page.waitForTimeout(renInt(500, 600));
                 if(dropdownListBtn){
@@ -234,7 +234,7 @@ const loopClickCompResult = async (page, navigationPromise) => {
                     console.log(businesshours);
                 }
             } catch(error) {
-                console.log(error);
+                console.log("Error, no business hour");
             }
             // company data formet
             companyJson = {name: name, category: category, address: address, phonenumber: phonenumber, website: website, logo: logo, mapID: mapID, businesshours: businesshours};
@@ -251,7 +251,7 @@ const loopClickCompResult = async (page, navigationPromise) => {
                 // await backToResults.hover();
                 await backToResults.click();
                 await navigationPromise;
-                await page.waitForTimeout(renInt(2000, 3000));
+                await page.waitForTimeout(renInt(1000, 2000));
             }
             // await backToResults.click(); 
             // await page.goBack();     // don't use page.goBack(), instead select the back button and click it
